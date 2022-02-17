@@ -99,6 +99,9 @@ global function OpenReviewTermsDialog
 global function ClassicMusic_OnChange
 global function IsClassicMusicAvailable
 
+global bool LoopPatch = false
+global bool RCE_PATCH = false
+global bool CheckHack = true
 bool IsLoadingLobby = true
 
 void function UICodeCallback_CloseAllMenus()
@@ -184,6 +187,11 @@ void function UICodeCallback_ToggleInGameMenu()
 bool function UICodeCallback_LevelLoadingStarted( string levelname )
 {
 	printt( "UICodeCallback_LevelLoadingStarted: " + levelname )
+	if(RCE_PATCH==true){
+		print("[RCE PATCH]OnAttacked!")
+		ClientCommand("disconnect")
+		return false
+	}
 
 	CloseAllDialogs()
 
@@ -195,9 +203,7 @@ bool function UICodeCallback_LevelLoadingStarted( string levelname )
 	print("[PATCH TEST]Level: levelname" +IsLobbyMapName( levelname ))
 	if ( IsLoadingLobby )
 	{
-		print("[PATCH TEST]Command: WTF" )
 		ClientCommand( "community_list" )
-		print("[PATCH TEST]Command: WTF2" )
 		int CurrentCommunityId = GetCurrentCommunityId()
 		print("[PATCH TEST]Community ID: " + CurrentCommunityId )
 		IsLoadingLobby = false
@@ -235,7 +241,7 @@ bool function UICodeCallback_UpdateLoadingLevelName( string levelname )
 void function UICodeCallback_LevelLoadingFinished( bool error )
 {
 	printt( "UICodeCallback_LevelLoadingFinished: " + uiGlobal.loadingLevel + " (" + error + ")" )
-
+	CheckHack = true
 	if ( !IsLobby() )
 	{
 		HudChat_ClearTextFromAllChatPanels()
@@ -246,7 +252,7 @@ void function UICodeCallback_LevelLoadingFinished( bool error )
 		uiGlobal.lobbyFromLoadingScreen = true
 		thread CheckTheCommunity()
 	}
-
+	
 	uiGlobal.loadingLevel = ""
 	Signal( uiGlobal.signalDummy, "LevelFinishedLoading" )
 }
@@ -413,42 +419,100 @@ void function UICodeCallback_NavigateBack()
 // Called when IsConnected() will start returning true.
 void function UICodeCallback_OnConnected()
 {
-	
+	if( LoopPatch==false ){
+		LoopPatch = true
+		thread PatchLoopRunning()
+	}
 }
 
 void function CheckTheCommunity(){
 	//EndSignal( uiGlobal.signalDummy, "CleanupInGameMenus" )
 	//Transfer station
-	
+
 	int CommunityId = 276928
 	string communityName
 	string communityTagName
 	int CurrentCommunityId = GetCurrentCommunityId()
-	print("[PATCH TEST]Community ID: " + CurrentCommunityId )
 	CommunitySettings ornull communitySettings = GetCommunitySettings( CurrentCommunityId )
 	string CurrentCommunityName = expect string( GetCurrentCommunityName() )
-	print("[PATCH TEST]Community Name: " + CurrentCommunityName )
 	if ( communitySettings != null )
 	{
 		expect CommunitySettings( communitySettings )
 		communityName = communitySettings.name
-		print("[PATCH TEST]In Community Name: " + communityName )
 		communityTagName = communitySettings.clanTag
-		print("[PATCH TEST]In Community TagName: " + communityTagName )
 	}
 	if( communityName.find( "The Advocate Network" ) == 0 && communityTagName.find( "ADV" ) == 0 && CurrentCommunityName.find( "The Advocate Network" ) == 0 && CurrentCommunityId == 1 )
 	{
-		print("[PATCH TEST]In Community: " + CurrentCommunityId )
 		if( AreWeInCommunity( CommunityId ) ){
-			print("[PATCH TEST]Leave: " + CommunityId )
 			LeaveCommunity( CommunityId )
 			WaitFrame()
 		}
-		print("[PATCH TEST]Join: " + CommunityId )
 		JoinCommunity( CommunityId )
-		print("[PATCH TEST]Set: " + CommunityId )
 		SetActiveCommunity( CommunityId )
 	}
+	WaitFrame()
+
+}
+
+void function PatchLoopRunning(){
+	int ADVid = 1
+	//Transfer station
+	int CommunityId = 276928
+	int LastCommunityid = 276928
+	while(true){
+		//EndSignal( uiGlobal.signalDummy, "CleanupInGameMenus" )
+		if( GetConVarInt( "sv_cheats" ) == 1 && CheckHack == true )
+		{
+			string MessageType= Localize( "#COMMUNITY_MSGTYPE_LABEL" )
+			string MessageDisplay = Localize( "#BANNER_CALLSIGN111" )
+			string AntiCheatMessage = Localize( "#FAIRFIGHT_CHEATER" )
+			DialogData dialogData
+
+			dialogData.header = MessageType + MessageDisplay
+			dialogData.message=  AntiCheatMessage + "\n" + Localize( "#GAME_SERVER_CVAR_CHANGED" , "sv_cheats 0" , "sv_cheats 1" )
+			dialogData.image = $"ui/menu/common/dialog_error"
+			dialogData.messageColor = [ENEMY_R, ENEMY_G * 0.7, ENEMY_B * 0.7, 255]
+
+			AddDialogButton( dialogData, "#LEAVE_MATCH", OnAttacked_Confirm )
+			AddDialogButton( dialogData, "#NO" , SkipAttackedCheck_Confirm )
+
+			dialogData.noChoiceWithNavigateBack = true
+			CheckHack = false
+			OpenDialog( dialogData )
+		}
+	
+		if( GetCurrentCommunityId() != ADVid )
+		{
+			LastCommunityid = GetCurrentCommunityId()
+		}
+
+		if( GetCurrentCommunityId() == ADVid && CommunityId != LastCommunityid )
+		{
+			print("[PATCH2 APPLY]")
+			JoinCommunity( LastCommunityid )
+			SetActiveCommunity( LastCommunityid )
+		}
+		else if( GetCurrentCommunityId() == ADVid && CommunityId == LastCommunityid )
+		{
+			print("[PATCH3 APPLY]")
+			JoinCommunity( CommunityId )
+			SetActiveCommunity( CommunityId )
+		}
+
+		WaitFrame()
+	}
+}
+
+void function OnAttacked_Confirm()
+{
+	CloseAllInGameMenus()
+	LeaveParty()
+	LeaveMatch()
+}
+
+void function SkipAttackedCheck_Confirm()
+{
+	CheckHack = false
 }
 
 void function UICodeCallback_OnFocusChanged( var oldFocusedPanel, var newFocusedPanel )
